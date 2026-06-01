@@ -2,12 +2,24 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from aiogram.types import Message as TgMessage
 
 from database import async_session_factory, crud
+from models import Message
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EditResult:
+    """Результат обработки правки — для мгновенного уведомления админов."""
+
+    message: Message
+    old_text: str | None
+    new_text: str | None
+    changed: bool
 
 
 def _extract(message: TgMessage) -> dict:
@@ -44,21 +56,27 @@ async def store_message(message: TgMessage) -> None:
     )
 
 
-async def store_edit(message: TgMessage) -> None:
-    """Фиксирует правку сообщения и историю изменений текста."""
+async def store_edit(message: TgMessage) -> EditResult:
+    """Фиксирует правку сообщения и историю изменений текста.
+
+    Возвращает EditResult, чтобы обработчик мог мгновенно разослать
+    администраторам уведомление «было → стало».
+    """
     data = _extract(message)
     async with async_session_factory() as session:
         async with session.begin():
-            await crud.add_edit(session, data)
+            saved, old_text, changed = await crud.add_edit(session, data)
     logger.debug(
-        "Зафиксирована правка chat=%s msg=%s",
-        data["chat_id"], data["message_id"],
+        "Зафиксирована правка chat=%s msg=%s changed=%s",
+        data["chat_id"], data["message_id"], changed,
     )
+    # expire_on_commit=False -> атрибуты saved доступны после закрытия сессии.
+    return EditResult(message=saved, old_text=old_text, new_text=data.get("text"), changed=changed)
 
 
-async def mark_message_deleted(chat_id: int, message_id: int) -> bool:
-    """Помечает сообщение удалённым. Возвращает True, если запись найдена."""
+async def mark_message_deleted(chat_id: int, message_id: int) -> Message | None:
+    """Помечает сообщение удалённым. Возвращает запись (или None, если не найдена)."""
     async with async_session_factory() as session:
         async with session.begin():
             message = await crud.mark_deleted(session, chat_id, message_id)
-            return message is not None
+        return message

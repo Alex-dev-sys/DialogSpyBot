@@ -39,6 +39,41 @@ def format_message(message: Message) -> str:
     )
 
 
+def _who(message: Message) -> str:
+    """Строка-«шапка» с автором и координатами сообщения."""
+    username = f"@{message.username}" if message.username else "—"
+    name = escape(message.full_name or "Неизвестный")
+    return (
+        f"👤 {name} ({escape(username)}) · id <code>{message.user_id}</code>\n"
+        f"💬 chat <code>{message.chat_id}</code> · msg <code>{message.message_id}</code>"
+    )
+
+
+def format_edit_alert(message: Message, old_text: str | None, new_text: str | None) -> str:
+    """Мгновенное уведомление о правке: было → стало."""
+    old = escape(old_text) if old_text else "<i>(не сохранено / пусто)</i>"
+    new = escape(new_text) if new_text else "<i>(пусто)</i>"
+    return (
+        "✏️ <b>Сообщение изменено</b>\n"
+        f"{_who(message)}\n"
+        f"🕒 отправлено: {_fmt_dt(message.date)}\n\n"
+        f"<b>Было:</b>\n{old}\n\n"
+        f"<b>Стало:</b>\n{new}"
+    )
+
+
+def format_deleted_alert(message: Message) -> str:
+    """Мгновенное уведомление об удалении: исходный текст."""
+    text = escape(message.text) if message.text else "<i>(без текста / медиа)</i>"
+    return (
+        "🗑 <b>Сообщение удалено</b>\n"
+        f"{_who(message)}\n"
+        f"🕒 отправлено: {_fmt_dt(message.date)}\n"
+        f"🕒 удалено: {_fmt_dt(message.deleted_at)}\n\n"
+        f"<b>Исходный текст:</b>\n{text}"
+    )
+
+
 def format_edits(message: Message, edits: Iterable[MessageEdit]) -> str:
     """Подробная история правок одного сообщения."""
     header = format_message(message)

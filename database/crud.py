@@ -35,12 +35,15 @@ async def add_message(session: AsyncSession, data: dict) -> Message:
     return message
 
 
-async def add_edit(session: AsyncSession, data: dict) -> Message:
+async def add_edit(session: AsyncSession, data: dict) -> tuple[Message, str | None, bool]:
     """Регистрирует правку сообщения.
 
     Если оригинал у нас уже есть — пишем старую/новую версию в историю
     и обновляем актуальный текст. Если оригинала нет (бот добавлен позже
     или сообщение пришло до запуска) — создаём запись сразу как изменённую.
+
+    Возвращает кортеж (сообщение, старый_текст, был_ли_изменён_текст),
+    чтобы вызывающий код мог мгновенно уведомить администраторов.
     """
     chat_id = data["chat_id"]
     message_id = data["message_id"]
@@ -56,20 +59,22 @@ async def add_edit(session: AsyncSession, data: dict) -> Message:
         session.add(
             MessageEdit(message_db_id=message.id, old_text=None, new_text=new_text)
         )
-        return message
+        return message, None, True
 
+    old_text = message.text
+    changed = old_text != new_text
     # Если текст фактически не поменялся (правка медиа и т.п.) — историю не плодим.
-    if message.text != new_text:
+    if changed:
         session.add(
             MessageEdit(
                 message_db_id=message.id,
-                old_text=message.text,
+                old_text=old_text,
                 new_text=new_text,
             )
         )
         message.text = new_text
     message.is_edited = True
-    return message
+    return message, old_text, changed
 
 
 async def mark_deleted(

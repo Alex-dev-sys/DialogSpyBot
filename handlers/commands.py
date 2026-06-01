@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import logging
 
-from aiogram import Router
+from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 
 from config import settings
 from database import async_session_factory, crud
-from services import formatter, message_service
+from services import formatter, message_service, notifier
 
 from .filters import IsAdmin
 
@@ -145,12 +145,13 @@ async def cmd_info(message: Message, command: CommandObject) -> None:
 
 
 @router.message(Command("markdeleted"), IsAdmin())
-async def cmd_mark_deleted(message: Message, command: CommandObject) -> None:
+async def cmd_mark_deleted(message: Message, command: CommandObject, bot: Bot) -> None:
     """Ручная пометка удаления.
 
     Через Bot API Telegram НЕ присылает событий об удалении сообщений
     пользователями, поэтому удаление отмечается вручную администратором
-    (или можно ответить этой командой на нужное сообщение).
+    (или можно ответить этой командой на нужное сообщение). После пометки
+    бот мгновенно рассылает админам исходный текст удалённого сообщения.
     """
     target_id: int | None = None
     if message.reply_to_message:
@@ -165,8 +166,10 @@ async def cmd_mark_deleted(message: Message, command: CommandObject) -> None:
         )
         return
 
-    ok = await message_service.mark_message_deleted(message.chat.id, target_id)
-    if ok:
+    saved = await message_service.mark_message_deleted(message.chat.id, target_id)
+    if saved is not None:
         await message.answer(f"🗑 Сообщение <code>{target_id}</code> помечено как удалённое.")
+        # Мгновенная рассылка исходника всем администраторам.
+        await notifier.notify_deleted(bot, saved)
     else:
         await message.answer("Сообщение с таким message_id в этом чате не найдено.")
