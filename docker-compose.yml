@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    container_name: dialogspybot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Сохраняем БД между перезапусками контейнера.
+      - ./data:/app/data
