@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # Сколько записей по умолчанию показывать в /history, /deleted, поиске.
     page_size: int = 20
 
+    # --- Userbot (Telethon) для АВТОМАТИЧЕСКОГО детекта удалений. ---
+    # Необязательные: если пусты — работает только режим бота (без автодетекта).
+    # api_id/api_hash берутся на https://my.telegram.org
+    api_id: int | None = None
+    api_hash: str | None = None
+    # Путь к файлу сессии Telethon (кладём в data/, чтобы переживал перезапуск).
+    userbot_session: str = "data/userbot"
+
     @field_validator("admin_ids", mode="before")
     @classmethod
     def _parse_admin_ids(cls, value: object) -> object:

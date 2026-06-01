@@ -1,4 +1,5 @@
 services:
+  # Telegram-бот: захват сообщений, команды, мгновенные уведомления о правках.
   bot:
     build: .
     container_name: dialogspybot
@@ -8,3 +9,18 @@ services:
     volumes:
       # Сохраняем БД между перезапусками контейнера.
       - ./data:/app/data
+
+  # Userbot (Telethon): АВТОМАТИЧЕСКИЙ детект удалений и правок от имени аккаунта.
+  # Перед первым запуском выполните однократный вход (создаст файл сессии):
+  #   docker compose run --rm userbot python -m userbot.login
+  userbot:
+    build: .
+    container_name: dialogspybot-userbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    command: ["python", "-m", "userbot.main"]
+    depends_on:
+      - bot

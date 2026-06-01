@@ -39,16 +39,18 @@ def _extract(message: TgMessage) -> dict:
     }
 
 
-async def store_message(message: TgMessage) -> None:
-    """Сохраняет входящее сообщение (идемпотентно по chat_id+message_id)."""
-    data = _extract(message)
+async def store_message_data(data: dict) -> None:
+    """Сохраняет сообщение по готовому словарю (идемпотентно).
+
+    Универсальная точка входа: подходит и для aiogram, и для Telethon-userbot.
+    """
     async with async_session_factory() as session:
         async with session.begin():
             existing = await crud.get_message(
                 session, data["chat_id"], data["message_id"]
             )
             if existing is not None:
-                return  # дубликат — например повторный апдейт
+                return  # дубликат — например повторный апдейт или второй источник
             await crud.add_message(session, data)
     logger.debug(
         "Сохранено сообщение chat=%s msg=%s user=%s",
@@ -56,13 +58,8 @@ async def store_message(message: TgMessage) -> None:
     )
 
 
-async def store_edit(message: TgMessage) -> EditResult:
-    """Фиксирует правку сообщения и историю изменений текста.
-
-    Возвращает EditResult, чтобы обработчик мог мгновенно разослать
-    администраторам уведомление «было → стало».
-    """
-    data = _extract(message)
+async def store_edit_data(data: dict) -> EditResult:
+    """Фиксирует правку по готовому словарю и возвращает EditResult."""
     async with async_session_factory() as session:
         async with session.begin():
             saved, old_text, changed = await crud.add_edit(session, data)
@@ -72,6 +69,16 @@ async def store_edit(message: TgMessage) -> EditResult:
     )
     # expire_on_commit=False -> атрибуты saved доступны после закрытия сессии.
     return EditResult(message=saved, old_text=old_text, new_text=data.get("text"), changed=changed)
+
+
+async def store_message(message: TgMessage) -> None:
+    """Сохраняет входящее aiogram-сообщение."""
+    await store_message_data(_extract(message))
+
+
+async def store_edit(message: TgMessage) -> EditResult:
+    """Фиксирует правку aiogram-сообщения и возвращает EditResult."""
+    return await store_edit_data(_extract(message))
 
 
 async def mark_message_deleted(chat_id: int, message_id: int) -> Message | None:

@@ -88,6 +88,45 @@ async def mark_deleted(
     return message
 
 
+# Граница «маркированных» id Telegram: каналы/супергруппы начинаются с -100…,
+# то есть их id меньше этого порога. Личные чаты и базовые группы — выше.
+_CHANNEL_ID_THRESHOLD = -1_000_000_000_000
+
+
+async def mark_deleted_by_ids(
+    session: AsyncSession,
+    message_ids: Sequence[int],
+    chat_id: int | None = None,
+) -> list[Message]:
+    """Помечает удалёнными сразу несколько сообщений (для userbot).
+
+    Событие MessageDeleted от Telethon содержит список message_id и иногда
+    chat_id. Для каналов/супергрупп chat_id известен. Для личных чатов и
+    базовых групп Telegram его не передаёт — тогда ищем только среди
+    не-канальных чатов, чтобы не задеть одноимённые id в каналах.
+    """
+    if not message_ids:
+        return []
+
+    stmt = select(Message).where(
+        Message.message_id.in_(list(message_ids)),
+        Message.is_deleted.is_(False),
+    )
+    if chat_id is not None:
+        stmt = stmt.where(Message.chat_id == chat_id)
+    else:
+        stmt = stmt.where(Message.chat_id > _CHANNEL_ID_THRESHOLD)
+
+    result = await session.execute(stmt)
+    messages = list(result.scalars().all())
+
+    now = datetime.now(timezone.utc)
+    for message in messages:
+        message.is_deleted = True
+        message.deleted_at = now
+    return messages
+
+
 async def get_history(
     session: AsyncSession,
     chat_id: int | None = None,
